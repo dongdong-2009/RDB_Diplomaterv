@@ -16,7 +16,7 @@ void APPLICATION_SendInitText(void);
 //A globalis adatokat tartalmazo struktura definicioja
 S_GLOBAL_DATA sGlobal;
 //A program inditasakor az USART-on kikuldott szoveg
-static TEXT   tInitText = "\n\r\n\r\n\r\n\r.:/ Erdos Gabor Diplomaterv, Gamma Demo \\:.\n\r\n\r\n\r\n\r";
+static TEXT   tInitText = "\n\r\n\r\n\r\n\r.:/ Erdos Gabor Diplomaterv, Delta Demo \\:.\n\r\n\r\n\r\n\r";
         
         
         

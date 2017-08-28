@@ -76,6 +76,8 @@ static CMCT                 poMCT;
 static S_PI_CONTROLLER_DATA sPIControllerObject;
 //A szabalyozo utolso hivasanak idopontja
 static U64                  u64TimeOfTheLastControllerCallMs    = 0;
+//A tesztfolyamat inditasanak idopontja
+static U64                  u64TimeOfTheTestProcessStartMs      = 0;
 //A szabalyozo engedelyezojele
 static bool                 bControllerEnable                   = FALSE;
 //Az aramszabalyozo alapjele
@@ -98,7 +100,7 @@ static S_SCOPE_DATA         sScopeData =
   .bFunctionEnabled               = FALSE,
   .bPeriodicSendingIsOn           = FALSE,
   .u64msTimeOfTheLastTransmission = 0, 
-  .tHeadlineText                  = "\n\r\n\r\n\r\n\ru64TimeOfTheLastControllerCallMs, eTestProcessState, i16SpeedSetValueRpm, i16SpeedActualValueRpm, i16CurrentSetValue\n\r",
+  .tHeadlineText                  = "\n\r\n\r<<<START>>>\n\ru64TimeSinceTestBeginMs,eTestProcessState,i16SpeedSetValueRpm,i16SpeedActualValueRpm,i16CurrentSetValue,\n\r",
   .u8HeadlineTextLength           = 0       
 };
 
@@ -174,6 +176,8 @@ void MOTOR_TestProcessStateMachineHandler(void)
     //Ha a nyomogombnak lefuto ele van
     if(TRUE == sGlobal.sLocalIo.bUserButtonFalling)
     {
+      //Elmentjük a teszt kezdesenek idopontjat
+      u64TimeOfTheTestProcessStartMs = sGlobal.sTime.u64UpTimeMs;
       //Kiküldjük a scope funkcio fejlecet
       MOTOR_ScopeFunctionSendHeadline();
       //Engedelyezzuk a periodikus adatkuldest
@@ -291,6 +295,8 @@ void MOTOR_ScopeFunctionPeriodicSendingHandler(void)
   static U8 au8TransmitBuffer[SCOPE_FUNCTION_TRANSMIT_BUFFER_SIZE_IN_BYTES];
   //A buffer kezdetetol szamitva ennyi byte-ot tartalmaz az aktualis kuldes
   static U8 u8TransmitLength;
+  //A tesztfolyamat kezdete ota eltelt ido
+  U64 u64TimeSinceTestBeginMs;
   
   //Ha a Scope funkcio be van kapcsolva  
   if(TRUE == sScopeData.bFunctionEnabled)
@@ -300,13 +306,16 @@ void MOTOR_ScopeFunctionPeriodicSendingHandler(void)
     {
       //A periodikus kuldes futtatasa a SCOPE_FUNCTION_PERIODIC_TRANSMIT_PERIOD_MS gyakorisaggal
       if(TIME_DidTimeElapse(sScopeData.u64msTimeOfTheLastTransmission ,SCOPE_FUNCTION_PERIODIC_TRANSMIT_PERIOD_MS))
-      {          
+      { 
+        //Kiszamoljuk a teszt kezdete ota eltelt idot
+        u64TimeSinceTestBeginMs = sGlobal.sTime.u64UpTimeMs - u64TimeOfTheTestProcessStartMs;
+        
         //A kuldesre kerulo string osszeallitasa es a hosszanak mentese
-        u8TransmitLength = sprintf((char *) au8TransmitBuffer, "%llu, %d, %d, %d, %d\n\r",  u64TimeOfTheLastControllerCallMs,
-                                                                                            eTestProcessState,
-                                                                                            i16SpeedSetValueRpm,
-                                                                                            i16SpeedActualValueRpm,
-                                                                                            i16CurrentSetValue);
+        u8TransmitLength = sprintf((char *) au8TransmitBuffer, "%llu,%d,%d,%d,%d,\n\r", u64TimeSinceTestBeginMs,
+                                                                                        eTestProcessState,
+                                                                                        i16SpeedSetValueRpm,
+                                                                                        i16SpeedActualValueRpm,
+                                                                                        i16CurrentSetValue);
         //Az sprintf funkcio mukodesenek ellenorzese
         if(0 < u8TransmitLength)
         {
