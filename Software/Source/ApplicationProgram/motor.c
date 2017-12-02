@@ -30,6 +30,8 @@ typedef struct
   U64                   u64msTimeOfTheLastTransmission;
   TEXT                  tHeadlineText;
   U8                    u8HeadlineTextLength;
+  TEXT                  tEndingText;
+  U8                    u8EndingTextLength;
 } S_SCOPE_DATA;
 
 
@@ -37,6 +39,7 @@ typedef struct
 void MOTOR_TestProcessStateMachineHandler(void);
 void MOTOR_SpeedControlHandler(void);
 void MOTOR_ScopeFunctionSendHeadline(void);
+void MOTOR_ScopeFunctionSendEnding(void);
 void MOTOR_ScopeFunctionStartPeriodicSending(void);
 void MOTOR_ScopeFunctionStopPeriodicSending(void);
 void MOTOR_ScopeFunctionPeriodicSendingHandler(void);
@@ -64,7 +67,7 @@ bool MOTOR_TargetSpeedWasReached(void);
 //A Scope funkcio soran hasznalt adatbuffer merete byte-okban
 #define SCOPE_FUNCTION_TRANSMIT_BUFFER_SIZE_IN_BYTES       ((U8)  100)
 //A Scope funkcio periodikus adatkuldesenek periodusideje ms-ban
-#define SCOPE_FUNCTION_PERIODIC_TRANSMIT_PERIOD_MS         ((U64)  10)
+#define SCOPE_FUNCTION_PERIODIC_TRANSMIT_PERIOD_MS         ((U64) 10)
 
 
 
@@ -99,9 +102,11 @@ static S_SCOPE_DATA         sScopeData =
 {
   .bFunctionEnabled               = FALSE,
   .bPeriodicSendingIsOn           = FALSE,
-  .u64msTimeOfTheLastTransmission = 0, 
-  .tHeadlineText                  = "\n\r\n\r<<<START>>>\n\ru64TimeSinceTestBeginMs,eTestProcessState,i16SpeedSetValueRpm,i16SpeedActualValueRpm,i16CurrentSetValue,\n\r",
-  .u8HeadlineTextLength           = 0       
+  .u64msTimeOfTheLastTransmission = 0,
+  .tHeadlineText                  = "\n\r<<<START>>>\n\ru64TimeSinceTestBeginMs,eTestProcessState,i16SpeedSetValueRpm,i16SpeedActualValueRpm,i16CurrentSetValue,\n\r",
+  .u8HeadlineTextLength           = 0,
+  .tEndingText                    = "<<<END>>>\n\r",
+  .u8EndingTextLength             = 0
 };
 
 
@@ -126,7 +131,8 @@ void MOTOR_Init(void *oMCI_Address,         //A motorhoz tartozo MCInterface obj
   //A scope funkcio inicializalasa
   sScopeData.bFunctionEnabled     = bEnableScopeFunction;
   sScopeData.u8HeadlineTextLength = strlen((const char *) sScopeData.tHeadlineText);
-  
+  sScopeData.u8EndingTextLength   = strlen((const char *) sScopeData.tEndingText);
+
   //A fordulatszamszabalyozo inicializalasa
   PI_CONTROLLER_Init(&sPIControllerObject, MOTOR_SPEED_CONTROLLER_SAMPLING_PERIOD_MS);  
   
@@ -189,7 +195,7 @@ void MOTOR_TestProcessStateMachineHandler(void)
     }     
     else
     {
-      //Ha az ujrainditas alatt törteno egyedi USART funkcio bekapcsolasahoz nyomtak meg a gombot,
+      //Ha az ujrainditas alatt torteno egyedi USART funkcio bekapcsolasahoz nyomtak meg a gombot,
         //akkor nem fogunk lefuto elt kapni, hanem a kontrollert a reset gombbal ujrainditjak.
     }
   }
@@ -222,12 +228,18 @@ void MOTOR_TestProcessStateMachineHandler(void)
     if(TRUE == MOTOR_TargetSpeedWasReached())
     {
       //Letiltjuk a periodikus adatkuldest
-      MOTOR_ScopeFunctionStopPeriodicSending();      
-      //Letiltjuk a szabalyozokat es atlepunk a kovetkezo allapotba      
-      bControllerEnable = FALSE;      
-      MCI_StopMotor(poMCI);
-      eTestProcessState = E_TEST_STANDBY;
-    }    
+      MOTOR_ScopeFunctionStopPeriodicSending();
+
+      //Megvarjuk, amig eltelik annyi ido, hogy biztonsaggal ki tudjuk kuldeni a lezaro szoveget
+      if(TIME_DidTimeElapse(sScopeData.u64msTimeOfTheLastTransmission ,SCOPE_FUNCTION_PERIODIC_TRANSMIT_PERIOD_MS))
+      {
+        MOTOR_ScopeFunctionSendEnding();
+        //Letiltjuk a szabalyozokat es atlepunk a kovetkezo allapotba
+        bControllerEnable = FALSE;
+        MCI_StopMotor(poMCI);
+        eTestProcessState = E_TEST_STANDBY;
+      }
+    }
   }
   //Hiba allapot es a nem definialt allapotok
   else
@@ -269,9 +281,22 @@ void MOTOR_ScopeFunctionSendHeadline(void)
   //Ha a Scope funkcio be van kapcsolva
   if(TRUE == sScopeData.bFunctionEnabled)
   {
-    //Akkor kiküldjük a mert adatok feljecet
-    UITask_SendBufferContentOnUsart((uint8_t *) sScopeData.tHeadlineText, sScopeData.u8HeadlineTextLength);    
-    //Beallitjuk, hogy most törtent az utolso küldes, igy a periodikus kuldes idozitese mostantol indul majd
+    //Akkor kikuldjuk a mert adatok feljecet
+    UITask_SendBufferContentOnUsart((uint8_t *) sScopeData.tHeadlineText, sScopeData.u8HeadlineTextLength);
+    //Beallitjuk, hogy most tortent az utolso kuldes, igy a periodikus kuldes idozitese mostantol indul majd
+    sScopeData.u64msTimeOfTheLastTransmission = sGlobal.sTime.u64UpTimeMs;
+  }
+}
+
+//A Scope funkcio kuldes vege jelzo szoveg kikuldesehez hasznalt fuggveny
+void MOTOR_ScopeFunctionSendEnding(void)
+{
+  //Ha a Scope funkcio be van kapcsolva
+  if(TRUE == sScopeData.bFunctionEnabled)
+  {
+    //Akkor kikuldjuk a kuldes veget jelzo szoveget
+    UITask_SendBufferContentOnUsart((uint8_t *) sScopeData.tEndingText, sScopeData.u8EndingTextLength);
+    //Beallitjuk, hogy most tortent az utolso kuldes, igy a periodikus kuldes idozitese mostantol indul majd
     sScopeData.u64msTimeOfTheLastTransmission = sGlobal.sTime.u64UpTimeMs;
   }
 }
